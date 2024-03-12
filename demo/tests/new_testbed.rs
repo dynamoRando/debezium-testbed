@@ -10,7 +10,7 @@ use schema_registry_converter::async_impl::schema_registry::SrSettings;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 10)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_testbed() {
     tracing_subscriber::fmt::init();
     let name = "demo";

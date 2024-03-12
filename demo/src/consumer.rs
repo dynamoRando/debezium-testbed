@@ -6,13 +6,13 @@ use rdkafka::{
 
 use crate::DEMO_BROKER_URL;
 
-const GROUP_ID: &str = "demo";
+//const GROUP_ID: &str = "demo";
 
 pub fn create_consumer_for(topic_name: &str) -> StreamConsumer {
     let mut config = ClientConfig::new();
 
     config
-        .set("group.id", GROUP_ID)
+        .set("group.id", topic_name)
         .set("bootstrap.servers", DEMO_BROKER_URL)
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")
