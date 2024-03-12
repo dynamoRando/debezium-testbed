@@ -2,13 +2,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use demo::consumer::check_for_topic;
 use demo::mysql::{add_test_data, get_mysql_pool};
 use demo::{TestBed, DEMO_SCHEMA_REGISTRY_URL};
 use rdkafka::message::Message;
 use schema_registry_converter::async_impl::avro::AvroDecoder;
 use schema_registry_converter::async_impl::schema_registry::SrSettings;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_testbed() {
@@ -50,41 +51,81 @@ async fn test_testbed() {
     let poll_handle = tokio::spawn(async move {
         let sr_settings = SrSettings::new(DEMO_SCHEMA_REGISTRY_URL.to_string());
         let decoder = AvroDecoder::new(sr_settings.clone());
-        let consumer = demo::consumer::create_consumer_for(&topic_name);
+        let topic = topic_name.clone();
 
+        let mut topic_created = false;
+        let mut timeout = false;
         let total_seconds = 10;
         let mut seconds = 0;
 
+        // main loop for poll thread
         loop {
-            info!("Sleeping polling thread for {seconds:?} of {total_seconds:?} seconds.");
-            thread::sleep(Duration::from_secs(1));
-
             if token.is_cancelled() {
                 break;
             }
 
-            if seconds >= total_seconds {
-                info!("Quitting because total seconds arrived");
+            // loop for checking to see if topic is created
+            loop {
+
+                // break if the timeout has been exceeded
+                if timeout {
+                    break;
+                }
+
+                info!("Checking for topic...");
+                topic_created = check_for_topic(&topic);
+                if topic_created {
+                    info!("Topic created, quitting topic check loop.");
+                    break;
+                } else {
+                    info!("Topic check - Sleeping polling thread for {seconds:?} of {total_seconds:?} seconds.");
+                    thread::sleep(Duration::from_secs(1));
+
+                    if seconds >= total_seconds {
+                        warn!("Quitting polling thread because timeout for topic check exceeded.");
+                        timeout = true;
+                        break;
+                    }
+
+                    seconds += 1;
+                }
+            }
+
+            // break out of the main loop if timeout has been exceeded
+            if timeout {
+                warn!("Quitting polling thread because timeout for topic check exceeded.");
                 break;
             } else {
+                info!("Sleeping polling thread for {seconds:?} of {total_seconds:?} seconds.");
+                thread::sleep(Duration::from_secs(1));
                 seconds += 1;
+
+                if seconds >= total_seconds {
+                    warn!("Quitting polling thread because overall timeout exceeded.");
+                    break;
+                }                
             }
 
-            match consumer.recv().await {
-                Ok(message) => {
-                    info!("Got message: {message:?}");
+            if topic_created {
+                info!("Topic created, polling...");
+                let consumer = demo::consumer::create_consumer_for(&topic_name);
 
-                    if let Some(payload) = message.payload() {
-                        let value = decoder.decode(Some(payload)).await.unwrap();
-                        let value = value.value;
-                        info!("Got value: {value:?}");
-                        *has_messages.lock().unwrap() = true;
+                match consumer.recv().await {
+                    Ok(message) => {
+                        info!("Got message: {message:?}");
+    
+                        if let Some(payload) = message.payload() {
+                            let value = decoder.decode(Some(payload)).await.unwrap();
+                            let value = value.value;
+                            info!("Got value: {value:?}");
+                            *has_messages.lock().unwrap() = true;
+                        }
+                    }
+                    Err(e) => {
+                        error!("{e:?} - topic may have not been created yet");
                     }
                 }
-                Err(e) => {
-                    error!("{e:?} - topic may have not been created yet");
-                }
-            }
+            }            
         }
     });
 

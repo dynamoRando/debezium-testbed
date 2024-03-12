@@ -30,6 +30,20 @@ pub fn create_consumer_for(topic_name: &str) -> StreamConsumer {
     consumer
 }
 
+pub fn check_for_topic(topic_name: &str) -> bool {
+    let mut client = KafkaClient::new(vec![DEMO_BROKER_URL.to_string()]);
+    client.load_metadata_all().unwrap();
+    let topics = client.topics();
+    for topic in topics {
+        let name = topic.name();
+        if name == topic_name {
+            return true;
+        }
+    }
+
+    false
+}
+
 
 pub fn create_client_example() {
     tracing_subscriber::fmt::init();
