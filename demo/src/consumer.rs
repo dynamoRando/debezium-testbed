@@ -1,8 +1,10 @@
+use kafka::client::KafkaClient;
 use rdkafka::{
     config::RDKafkaLogLevel,
     consumer::{Consumer, StreamConsumer},
     ClientConfig,
 };
+use tracing::info;
 
 use crate::DEMO_BROKER_URL;
 
@@ -26,4 +28,22 @@ pub fn create_consumer_for(topic_name: &str) -> StreamConsumer {
     consumer.subscribe(&[topic_name]).unwrap();
 
     consumer
+}
+
+
+pub fn create_client_example() {
+    tracing_subscriber::fmt::init();
+    let mut client = KafkaClient::new(vec![DEMO_BROKER_URL.to_string()]);
+    client.load_metadata_all().unwrap();
+    let topics = client.topics();
+
+    for topic in topics {
+        let name = topic.name();
+        info!("{name:?}");
+    }
+}
+
+#[test]
+fn test_list_topics() {
+    create_client_example()
 }
